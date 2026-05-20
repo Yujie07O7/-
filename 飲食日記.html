@@ -405,7 +405,8 @@ async function pullAndMerge() {
     if (!map[e.id]) map[e.id] = e;
     else if (e.updatedAt > map[e.id].updatedAt) map[e.id] = e;
   });
-  entries = Object.values(map).filter(e => !e.deleted);
+  // 保留 deleted 標記（tombstone），讓所有裝置都能同步到刪除狀態
+  entries = Object.values(map);
   saveLocal();
 }
 
