@@ -162,15 +162,20 @@ textarea{resize:none;height:80px}
         </div>
       </div>
       <div class="settings-section">
-        <h3>跨裝置同步</h3>
+        <h3>GitHub Token 設定</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+          Token 只存在你的裝置上，不會上傳到任何地方。每台裝置各輸入一次即可。
+        </p>
         <div class="settings-row">
-          <div class="settings-item" style="cursor:default">
-            <div class="settings-item-left"><span class="settings-item-icon">✅</span>自動同步（GitHub Gist）</div>
+          <div class="settings-item" style="flex-direction:column;align-items:flex-start;gap:10px;cursor:default">
+            <div id="token-status" style="font-size:13px;color:var(--muted)">讀取中...</div>
+            <div style="display:flex;gap:8px;width:100%">
+              <input type="password" id="token-input" placeholder="ghp_..." style="flex:1;font-size:13px;padding:10px 12px;border:2px solid var(--border);border-radius:10px;outline:none;font-family:monospace">
+              <button onclick="saveToken()" style="background:var(--primary);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">儲存</button>
+            </div>
+            <button onclick="clearToken()" style="background:none;border:none;color:#D32F2F;font-size:13px;cursor:pointer;padding:0">清除 Token</button>
           </div>
         </div>
-        <p style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6">
-          所有裝置開啟後按「同步」，會自動找到同一份資料，不需要手動設定。
-        </p>
       </div>
       <div class="settings-section">
         <h3>匯出資料</h3>
@@ -287,15 +292,17 @@ textarea{resize:none;height:80px}
 
 <script>
 // ── Config ──
-const GITHUB_TOKEN = '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';
 const GIST_FILENAME = 'food-diary.json';
 const GIST_API = 'https://api.github.com/gists';
-const GITHUB_HEADERS = {
-  'Authorization': 'token ' + GITHUB_TOKEN,
-  'Content-Type': 'application/json',
-  'Accept': 'application/vnd.github+json',
-  'X-GitHub-Api-Version': '2022-11-28'
-};
+function getHeaders() {
+  const token = localStorage.getItem('gh_token') || '';
+  return {
+    'Authorization': 'token ' + token,
+    'Content-Type': 'application/json',
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28'
+  };
+}
 
 // ── State ──
 let entries = [];
@@ -309,6 +316,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadLocal();
   renderAll();
   setDefaultTime();
+  renderTokenStatus();
   await syncNow(true);
 });
 
@@ -326,6 +334,11 @@ function saveLocal() {
 
 // ── GitHub Gist Sync ──
 async function syncNow(silent = false) {
+  if (!localStorage.getItem('gh_token')) {
+    showToast('⚠ 請先在設定頁輸入 GitHub Token');
+    showView('settings', document.querySelectorAll('.nav-btn')[3]);
+    return;
+  }
   const btn = document.querySelector('.sync-btn');
   btn.classList.add('syncing');
   document.getElementById('sync-label').textContent = '同步中';
@@ -349,7 +362,7 @@ async function syncNow(silent = false) {
 
 // 搜尋現有 gist，找不到就建一個新的（所有裝置自動共用同一份）
 async function findOrCreateGist() {
-  const res = await fetch(GIST_API + '?per_page=100', { headers: GITHUB_HEADERS });
+  const res = await fetch(GIST_API + '?per_page=100', { headers: getHeaders() });
   if (!res.ok) throw new Error(`無法讀取 Gist 清單 (${res.status})`);
   const list = await res.json();
   const found = list.find(g => g.files && g.files[GIST_FILENAME]);
@@ -366,7 +379,7 @@ async function findOrCreateGist() {
 async function createGist() {
   const res = await fetch(GIST_API, {
     method: 'POST',
-    headers: GITHUB_HEADERS,
+    headers: getHeaders(),
     body: JSON.stringify({
       description: '飲食日記資料',
       public: false,
@@ -380,7 +393,7 @@ async function createGist() {
 }
 
 async function pullAndMerge() {
-  const res = await fetch(`${GIST_API}/${gistId}`, { headers: GITHUB_HEADERS });
+  const res = await fetch(`${GIST_API}/${gistId}`, { headers: getHeaders() });
   if (!res.ok) throw new Error(`讀取失敗 (${res.status})`);
   const gist = await res.json();
   const content = gist.files[GIST_FILENAME]?.content;
@@ -399,7 +412,7 @@ async function pullAndMerge() {
 async function pushToGist() {
   const res = await fetch(`${GIST_API}/${gistId}`, {
     method: 'PATCH',
-    headers: GITHUB_HEADERS,
+    headers: getHeaders(),
     body: JSON.stringify({
       files: { [GIST_FILENAME]: { content: JSON.stringify({ version: 1, entries }) } }
     })
@@ -735,6 +748,34 @@ function download(blob, name) {
   a.href = URL.createObjectURL(blob);
   a.download = name;
   a.click();
+}
+
+// ── Token helpers ──
+function renderTokenStatus() {
+  const el = document.getElementById('token-status');
+  if (!el) return;
+  const t = localStorage.getItem('gh_token');
+  el.textContent = t ? '✅ Token 已設定（' + t.slice(0,8) + '••••）' : '⚠️ 尚未設定 Token';
+  el.style.color = t ? '#2e7d32' : '#D32F2F';
+}
+function saveToken() {
+  const val = document.getElementById('token-input').value.trim();
+  if (!val || !val.startsWith('ghp_')) { showToast('請輸入正確的 Token（ghp_ 開頭）'); return; }
+  localStorage.setItem('gh_token', val);
+  localStorage.removeItem('diary_gist_id');
+  gistId = null;
+  document.getElementById('token-input').value = '';
+  renderTokenStatus();
+  showToast('✓ Token 已儲存，開始同步...');
+  setTimeout(() => syncNow(false), 500);
+}
+function clearToken() {
+  if (!confirm('確定要清除 Token？')) return;
+  localStorage.removeItem('gh_token');
+  localStorage.removeItem('diary_gist_id');
+  gistId = null;
+  renderTokenStatus();
+  showToast('Token 已清除');
 }
 
 // ── Toast ──
