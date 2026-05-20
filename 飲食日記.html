@@ -291,9 +291,10 @@ const GITHUB_TOKEN = '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';
 const GIST_FILENAME = 'food-diary.json';
 const GIST_API = 'https://api.github.com/gists';
 const GITHUB_HEADERS = {
-  'Authorization': 'Bearer ' + GITHUB_TOKEN,
+  'Authorization': 'token ' + GITHUB_TOKEN,
   'Content-Type': 'application/json',
-  'Accept': 'application/vnd.github+json'
+  'Accept': 'application/vnd.github+json',
+  'X-GitHub-Api-Version': '2022-11-28'
 };
 
 // ── State ──
